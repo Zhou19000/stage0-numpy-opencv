@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# JetBrains / IDE config
+.idea/
+
+# VS Code
+.vscode/
