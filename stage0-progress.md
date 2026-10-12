@@ -48,7 +48,7 @@
 - [x] 2.6 reshape：改变形状
 - [x] 2.7 transpose、expand_dims、squeeze
 - [x] 2.8 广播机制（Broadcasting）
-- [ ] 2.9 统计与聚合函数，以及 axis
+- [x] 2.9 统计与聚合函数，以及 axis
 - [ ] 2.10 argmax、argmin、argsort
 - [ ] 2.11 concatenate、stack 与 split
 - [ ] 2.12 布尔索引、np.where 与 np.clip
@@ -56,7 +56,7 @@
 - [ ] 2.14 随机数与综合例题
 - [ ] 2.15 本章小结
 
-**进度：8 / 15**
+**进度：9 / 15**
 
 ### 第 3 章　OpenCV 图像处理
 
@@ -149,3 +149,4 @@
 | 10-11 | Git 命令速查表                 | `git-cheatsheet.md`      | 0e395ae |
 | 10-11 | reshape / transpose / squeeze | `day4_shape_ops.py`      | 11410ab |
 | 10-12 | 广播机制 / 按通道归一化        | `day5_broadcasting.py`   | 1203a27 |
+| 10-12 | 统计聚合与 axis / 例题2-6    | `day6_aggregation_axis.py` | 490280d |
