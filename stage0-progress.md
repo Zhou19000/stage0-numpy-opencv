@@ -147,4 +147,4 @@
 | 10-10 | 索引与切片、视图 vs copy          | `day2_numpy_indexing.py` | 9538554 |
 | 10-11 | Python 补缺（函数/推导式/类/模块/文件） | `day3_python_refresh.py` | 1b8422f |
 | 10-11 | Git 命令速查表                 | `git-cheatsheet.md`      | 0e395ae |
-| 10-11 | reshape / transpose / squeeze | `day4_shape_ops.py`      | 待 push  |
+| 10-11 | reshape / transpose / squeeze | `day4_shape_ops.py`      | 11410ab |
