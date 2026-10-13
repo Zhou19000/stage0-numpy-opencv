@@ -116,6 +116,7 @@
 | 2.9–2.10 | axis 方向感（跨过哪一维、用结果 shape 反推） | 连续两天重复追问同一件事，需再练一轮 |
 | 2.5 / 2.10 | 二维切片逗号（`[::-1]` vs `[:, ::-1]`） | 漏逗号导致 Top-K 取错方向 |
 | 2.11 | stack 的 axis 语义、索引剥皮（`x[i]` 剥第几维） | 一轮内追问 3 次；"行列层"具象类比在 ≥4 维失效，需改用维度编号思维 |
+| 补练 ✅ | 索引取值差一位（`z[1,::-1,1]` 取错位置号） | 已用维度专项 4 题补练修复（`day8b_dimension_drill.py`，修正后 20 项全对）；以后取单个值前先分步打印中间结果 |
 
 > 建议：某个周末抽 30 分钟，翻笔记做这几节的例题，做完把 1.3 / 1.10 的框勾上。
 
@@ -155,3 +156,4 @@
 | 10-12 | 统计聚合与 axis / 例题2-6    | `day6_aggregation_axis.py` | 490280d |
 | 10-13 | argmax/argmin/argsort / softmax与Top-3 | `day7_argmax_argsort.py` | 6d7dc5d |
 | 10-13 | concatenate/stack/split / 例题2-8 | `day8_concat_stack_split.py` | a5932e9 |
+| 10-13 | 补练: 数组维度专项 4 题 | `day8b_dimension_drill.py` | 2f31881 |
