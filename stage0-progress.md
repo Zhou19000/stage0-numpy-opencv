@@ -116,8 +116,8 @@
 | 2.9–2.10 | axis 方向感（跨过哪一维、用结果 shape 反推） | 连续两天重复追问同一件事，需再练一轮 |
 | 2.5 / 2.10 | 二维切片逗号（`[::-1]` vs `[:, ::-1]`） | 漏逗号导致 Top-K 取错方向 |
 | 2.11 | stack 的 axis 语义、索引剥皮（`x[i]` 剥第几维） | 一轮内追问 3 次；"行列层"具象类比在 ≥4 维失效，需改用维度编号思维 |
-| 补练 ✅ | 索引取值差一位（`z[1,::-1,1]` 取错位置号） | 已用维度专项 4 题补练修复（`day8b_dimension_drill.py`，修正后 20 项全对）；以后取单个值前先分步打印中间结果 |
-| 2.12 ✅ | 区间类 API 只夹一端（`clip` 漏上限）；造了掩码却不使用 | 两处都是"不报错的错"：clip 要同时写下限和上限；筛框时 `boxes` 和 `scores` 必须套同一个掩码。已用布尔索引专项 4 题补练修复（`day9b_boolean_drill.py`，预测 24 项全对） |
+| 补练 ✅ | 索引取值差一位（`z[1,::-1,1]` 取错位置号） | 已用维度专项 4 题补练修复（`2.6-2.8b_dimension_drill.py`，修正后 20 项全对）；以后取单个值前先分步打印中间结果 |
+| 2.12 ✅ | 区间类 API 只夹一端（`clip` 漏上限）；造了掩码却不使用 | 两处都是"不报错的错"：clip 要同时写下限和上限；筛框时 `boxes` 和 `scores` 必须套同一个掩码。已用布尔索引专项 4 题补练修复（`2.12b_boolean_drill.py`，预测 24 项全对） |
 | 2.12 ✅ | 赋值语句左右取错列（`dk[:,[1,3]] = np.clip(dk[:,[0,2]], ...)`） | 复制粘贴时忘改右边的列号，导致 y 位置被 x 值覆盖；写赋值前先念一遍"左边改谁、右边取的是什么" |
 | 2.13 | 视图/拷贝判定反了：默认"没写 `.copy()` 就是视图" | 2-3/2-4/2-6 把花式索引、布尔索引、astype 当成视图（预测原数组跟着变）；2-2 把反向切片 `a[::-1]` 当成"原数组被就地反转"；Part4 以为 `ascontiguousarray` 总共享内存。修正法则：**只有切片（含反向/步长）、transpose、reshape 是视图**；凡是用下标列表 / 布尔掩码 / astype / clip 取出来的，或 `ascontiguousarray` 作用于不连续数组时，都是**拷贝**，哪怕一个 `.copy()` 都没写。验证只用 `np.shares_memory(a, b)` 或 `b.base is a` |
 | 2.14 | `np.random.shuffle` 的返回值写成"打乱后的数组" | 实际返回 **None**（原地改 + 返回 None，和 `permutation` 正好相反：`permutation` 不动原数组、返回副本）。同类"原地 vs 副本"要盯返回值。另 `randint` 上界笔误写成 1（应 10）。两处已当场修正并实跑验证 |
@@ -153,18 +153,19 @@
 | 日期    | 内容                        | 产出文件                     | 提交号     |
 | ----- | ------------------------- | ------------------------ | ------- |
 | 10-09 | Git 全链路 + 仓库初始化           | `notes.md`               | 4222160 |
-| 10-10 | NumPy 数组基础（属性/创建）         | `day1_numpy_basics.py`   | 8df43ff |
-| 10-10 | 索引与切片、视图 vs copy          | `day2_numpy_indexing.py` | 9538554 |
-| 10-11 | Python 补缺（函数/推导式/类/模块/文件） | `day3_python_refresh.py` | 1b8422f |
+| 10-10 | NumPy 数组基础（属性/创建）         | `2.1-2.2_numpy_basics.py`   | 8df43ff |
+| 10-10 | 索引与切片、视图 vs copy          | `2.3-2.4_indexing_slicing.py` | 9538554 |
+| 10-11 | Python 补缺（函数/推导式/类/模块/文件） | `1.x_python_refresh.py` | 1b8422f |
 | 10-11 | Git 命令速查表                 | `git-cheatsheet.md`      | 0e395ae |
-| 10-11 | reshape / transpose / squeeze | `day4_shape_ops.py`      | 11410ab |
-| 10-12 | 广播机制 / 按通道归一化        | `day5_broadcasting.py`   | 1203a27 |
-| 10-12 | 统计聚合与 axis / 例题2-6    | `day6_aggregation_axis.py` | 490280d |
-| 10-13 | argmax/argmin/argsort / softmax与Top-3 | `day7_argmax_argsort.py` | 6d7dc5d |
-| 10-13 | concatenate/stack/split / 例题2-8 | `day8_concat_stack_split.py` | a5932e9 |
-| 10-13 | 补练: 数组维度专项 4 题 | `day8b_dimension_drill.py` | 2f31881 |
-| 10-14 | 布尔索引/np.where/np.clip / 例题2-9 | `day9_boolean_indexing.py` | 21bc675 |
-| 10-14 | 补练: 布尔索引专项 4 题（本地留存，未提交） | `day9b_boolean_drill.py` | — |
-| 10-15 | 视图 vs 拷贝、内存连续性 / 例题2-10 | `day10_view_vs_copy.py` | 待周总提交 |
-| 10-16 | 随机数与综合例题（例题2-11 预处理 / 2-12 向量化IoU / 2-13 NMS，三函数手写并跑通） | `day11_random_comprehensive.py` | 待周总提交 |
+| 10-11 | reshape / transpose / squeeze | `2.6-2.7_shape_transpose.py`      | 11410ab |
+| 10-12 | 广播机制 / 按通道归一化        | `2.8_broadcasting.py`   | 1203a27 |
+| 10-12 | 统计聚合与 axis / 例题2-6    | `2.9_aggregation_axis.py` | 490280d |
+| 10-13 | argmax/argmin/argsort / softmax与Top-3 | `2.10_argmax_argsort.py` | 6d7dc5d |
+| 10-13 | concatenate/stack/split / 例题2-8 | `2.11_concat_stack_split.py` | a5932e9 |
+| 10-13 | 补练: 数组维度专项 4 题 | `2.6-2.8b_dimension_drill.py` | 2f31881 |
+| 10-14 | 布尔索引/np.where/np.clip / 例题2-9 | `2.12_boolean_indexing.py` | 21bc675 |
+| 10-14 | 补练: 布尔索引专项 4 题（本地留存，未提交） | `2.12b_boolean_drill.py` | — |
+| 10-15 | 视图 vs 拷贝、内存连续性 / 例题2-10 | `2.13_view_vs_copy.py` | 待周总提交 |
+| 10-16 | 随机数与综合例题（例题2-11 预处理 / 2-12 向量化IoU / 2-13 NMS，三函数手写并跑通） | `2.14_random_comprehensive.py` | 待周总提交 |
 | 10-19 | 主动回忆闪电测（10条，8对）+ 2.15 本章小结（第 2 章收官） | 自测（无文件） | — |
+| 10-19 | 第 2 章收口练习 + 全部练习文件按章节号重命名 | `2.13-2.15_practice.py` | 待周总提交 |
