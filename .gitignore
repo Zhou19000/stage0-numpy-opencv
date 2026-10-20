@@ -224,3 +224,8 @@ __marimo__/
 
 # VS Code
 .vscode/
+
+# 3.1 练习生成的图片输出目录
+out_3.1/
+*.png
+*.jpg
