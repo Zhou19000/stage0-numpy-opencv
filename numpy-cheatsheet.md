@@ -118,6 +118,28 @@ import numpy as np
 - **向量化 IoU**：`maximum/minimum` 取交集四边 → `clip(0)` → 交 ÷ 并
 - **NMS**：`argsort[::-1]` → 循环 → 每轮留队首、用 IoU 筛候选
 
+## 12. 三个"比较"别混（2026-10-21 补）
+
+| 你想问的问题 | 用哪个 | 看什么 |
+| --- | --- | --- |
+| 这两个变量是**同一个对象**吗？ | `a is b` | 对象身份（同一块内存同一包装） |
+| 这两个数组**共享内存**吗？ | `np.shares_memory(a, b)` | 内存地址是否重叠（视图 = True，拷贝 = False） |
+| 这两个数组的**值一样**吗？ | `np.array_equal(a, b)` | **只看 shape + 元素值，不看内存、不看 dtype** |
+
+**关键结论（实测确认）**：
+- 同一个对象、拷贝、视图 —— 三者 `array_equal` **全是 True**
+- `dtype` 不同不影响：`array_equal([1,2,3], [1.0,2.0,3.0])` → **True**
+- `shape` 不同直接 False：`(3,)` vs `(1,3)` → **False**
+- 差 1 也算 False：`array_equal` 是**严格相等**，没有容差
+
+**要比较"差多少"（OpenCV 定点 vs NumPy 浮点常差 1~2）：**
+```python
+np.abs(a.astype(np.int16) - b.astype(np.int16)).max()   # 最大误差
+```
+⚠️ 先转 `int16`，否则 uint8 相减会溢出绕回。
+
+**一句话**：`shares_memory` 管"改它原图变不变"，`array_equal` 管"值一不一样"，**两件事无关**。
+
 ---
 
 ## 怎么用这张表（重要）
