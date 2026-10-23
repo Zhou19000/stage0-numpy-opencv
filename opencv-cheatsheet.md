@@ -377,7 +377,80 @@ inv = cv2.bitwise_not(red_mask)                # 反转：只要非红区域
 
 ---
 
-## 四、色彩在 OpenCV 里的速查
+## 四、缩放与补边（3.4）
+
+### `cv2.resize(图像, dsize, fx, fy, interpolation)`
+
+**干什么**：改变图像尺寸。**返回拷贝，不共享内存。**
+
+| 参数 | 必填 | 含义 |
+|---|---|---|
+| 图像 | ✅ | 原图 ndarray |
+| dsize | ✅ | **`(宽, 高)`** —— 和 shape 的 `(高, 宽)` **正好相反**；写 `None` 时用 fx/fy |
+| fx, fy | ❌ | 宽、高各自的缩放倍数；与 dsize 二选一，都写时 **dsize 优先** |
+| interpolation | ❌ | 插值方式，默认 `INTER_LINEAR` |
+
+**返回**：`ndarray`，`shape = (新高, 新宽, 通道数)`，dtype 不变
+
+```python
+half = cv2.resize(img, (img.shape[1] // 2, img.shape[0] // 2))   # 缩一半
+big  = cv2.resize(img, None, fx=2, fy=2)                          # 放大两倍
+```
+
+**坑**：
+- **dsize 写反不报错**，图被拉成别的比例 —— 最阴的坑
+- dsize 必须是**整数**元组，`(w*0.5, h*0.5)` 是 float 会报 `Can't parse 'dsize'`
+- 缩小用 LINEAR 会混叠（漏看 96/100 的像素），要用 AREA
+
+### 四种插值方式（背这张）
+
+| 常量 | 中文 | 怎么算新像素 | 什么时候用 |
+|---|---|---|---|
+| `INTER_NEAREST` | 最近邻 | 直接抄最近的像素 | 最快；掩码/标签图（不能造中间值）；马赛克 |
+| `INTER_LINEAR` | 双线性 | **2×2** 邻居按距离加权 | 默认；**放大首选** |
+| `INTER_CUBIC` | 双三次 | **4×4** 邻居加权，更锐 | 高质量放大（慢，边缘轻微过冲） |
+| `INTER_AREA` | 区域重采样 | 整块覆盖区域取均值 | **缩小首选** |
+
+> 插值直觉：**放大怕"太空"（造新像素，按距离加权），缩小怕"太挤"（会漏像素，AREA 一个不漏）**。
+> 放大 5 倍时边界只出现 4 个过渡值（f = 0.2/0.4/0.6/0.8），如 255→204→153→102→51→0。
+
+### `cv2.copyMakeBorder(图像, top, bottom, left, right, borderType, value)`
+
+**干什么**：给图像四周加边框。**letterbox 的补边就靠它。**
+
+| 参数 | 必填 | 含义 |
+|---|---|---|
+| 图像 | ✅ | 原图 |
+| top, bottom, left, right | ✅ | **上、下、左、右**各加几像素（不是顺时针！） |
+| borderType | ✅ | `BORDER_CONSTANT` 填固定色（letterbox 用）/ `REPLICATE` 复制边缘 / `REFLECT` 镜像 |
+| value | ❌ | 填充色 **BGR**，如 `(114, 114, 114)` 灰；只对 CONSTANT 生效 |
+
+**返回**：`ndarray`，`shape = (高+top+bottom, 宽+left+right, 通道)`
+
+### `letterbox` 模板（目标检测预处理标准操作）
+
+```python
+def letterbox(img, size=640, color=(114, 114, 114)):
+    h, w = img.shape[:2]
+    scale = min(size / h, size / w)          # 取小的：两条边都不超标
+    nw, nh = int(w * scale), int(h * scale)  # 等比新尺寸
+    resized = cv2.resize(img, (nw, nh))
+    dw, dh = size - nw, size - nh
+    top, bottom = dh // 2, dh - dh // 2      # 空隙平分，余数丢给下/右
+    left, right = dw // 2, dw - dw // 2
+    out = cv2.copyMakeBorder(resized, top, bottom, left, right,
+                             cv2.BORDER_CONSTANT, value=color)
+    return out, scale, (left, top)
+```
+
+**三步记忆**：① `scale = min(...)` 等比缩到长边顶满 ② resize ③ 空隙 `//2` 平分补灰。
+**为什么取 min**：取 max 会有一边超出 size，超了就得裁；不够可以补，超了不能裁。
+**正方形图**：dw=dh=0，自动退化成普通等比 resize，不用写 if。
+**返回 scale 和 pad 干嘛用**：模型输出的框坐标是补边图上的，要 ÷scale、−pad 才能映射回原图。
+
+---
+
+## 五、色彩在 OpenCV 里的速查
 
 ### BGR 里各颜色的值
 
@@ -401,7 +474,7 @@ H_opencv = 角度 / 2
 
 ---
 
-## 五、返回值形状速查（最容易混）
+## 六、返回值形状速查（最容易混）
 
 | 函数 | 输入 shape | 输出 shape |
 |---|---|---|
@@ -414,6 +487,9 @@ H_opencv = 角度 / 2
 | `merge` | 三个 `(H,W)` | `(H,W,3)` |
 | `bitwise_and(mask=)` | `(H,W,3)` + `(H,W)` | `(H,W,3)` |
 | `imencode` | `(H,W,3)` | **`(N,)` 一维字节** |
+| `resize(img, (w2,h2))` | `(H,W,3)` | `(h2, w2, 3)` —— **dsize 是(宽,高)，shape 是(高,宽)** |
+| `copyMakeBorder(t,b,l,r)` | `(H,W,3)` | `(H+t+b, W+l+r, 3)` |
+| `letterbox(img, 640)` | 任意 | **`(640, 640, 3)` 恒定** |
 | `imdecode` | `(N,)` | `(H,W,3)` |
 | `np.fromfile` | — | `(N,)` |
 | 切片 `img[0]` | `(H,W,3)` | **`(W, 3)` 少了第一维** |
