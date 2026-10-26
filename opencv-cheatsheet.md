@@ -450,7 +450,87 @@ def letterbox(img, size=640, color=(114, 114, 114)):
 
 ---
 
-## 五、色彩在 OpenCV 里的速查
+## 五、数值归一化（3.5）
+
+### `cv2.normalize(图像, dst, alpha, beta, norm_type, dtype)`
+
+**干什么**：把数值线性变换到指定区间（`NORM_MINMAX` 时）。
+
+| 参数 | 必填 | 含义 |
+|---|---|---|
+| 图像 | ✅ | 输入数组 |
+| dst | ✅ | 输出数组，**Python 里永远写 `None`**（函数新建并返回） |
+| alpha, beta | ✅ | MINMAX 模式 = 目标区间的**最小值、最大值** |
+| norm_type | ❌ | `NORM_MINMAX` 拉到 [alpha, beta]；`NORM_L1/L2/INF` 是范数归一化（图像预处理不用） |
+| dtype | ❌ | `-1` = 跟原图一致 —— **归一到 0~1 时必须写 `cv2.CV_32F`** |
+
+**返回**：新 ndarray
+
+```python
+# 拉伸到 0~255（= 对比度拉伸）
+st = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
+
+# 归一化到 0~1（喂模型）—— 必须带 dtype
+x = cv2.normalize(img, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+```
+
+**四种 norm_type 别搞混**：
+
+| type | 保证什么 | 图像用吗 |
+|---|---|---|
+| `NORM_MINMAX` | min→alpha，max→beta | ✅ 唯一的 |
+| `NORM_L1` | 所有元素**绝对值之和** = alpha | ❌ |
+| `NORM_L2` | 平方和开根 = alpha | ❌ |
+| `NORM_INF` | **最大绝对值** = alpha | ❌ |
+
+> 只有 MINMAX 同时用 alpha 和 beta，其余三个只用 alpha。
+
+### 两个坑（都是“不报错的错”）
+
+**坑 1：uint8 装不下 0~1 的小数**
+
+```python
+bad  = cv2.normalize(img, None, 0, 1, cv2.NORM_MINMAX)                    # uint8 → 只剩 [0 1] 两个值
+good = cv2.normalize(img, None, 0, 1, cv2.NORM_MINMAX, dtype=cv2.CV_32F)  # float32 → 0.0~1.0
+```
+
+`[60, 130, 200]` 归一化到 0~1 得 `[0, 0.5, 1]`，但结果写回 uint8（只有 0/1 两档整数）→ `[0, 0, 1]`，**中间值全灭**。
+
+**坑 2：`img / 255` 的 dtype 是 float64（黑洞）**
+
+```python
+a = img.astype(np.float32) / 255   # float32 ← 正确
+b = img / 255                      # float64 ← 整数参与 / 必升 float64，内存 ×8
+```
+
+规则：**整数数组只要参与 `/`，结果必是 float64**；float32 参与运算才保持 float32。
+
+### 三种“归一/拉伸”的区别
+
+```
+归一化 /255：      新值 = 原值 × (1/255)                 只缩放，不平移
+min-max 拉伸：    新值 = (原值 − min) × 255/(max−min)    先平移再缩放，两端被顶满
+标准化（standardize）：新值 = (原值 − 均值) / 标准差      范围不是 0~1，深度学习常用
+```
+
+> 全范围图（min=0, max=255）做前两种结果相同。区别只在**没占满范围**的图上显现：拉伸提对比度，除 255 不提。
+
+### 手写 min-max 拉伸（不依赖 cv2）
+
+```python
+def stretch(img):
+    lo, hi = img.min(), img.max()
+    out = (img.astype(np.float32) - lo) / (hi - lo) * 255
+    return out.astype(np.uint8)
+```
+
+与 `cv2.normalize(...NORM_MINMAX)` 的结果**最大差 1**（舍入方向不同），不要用 `array_equal` 判等，用 `np.abs(a.astype(np.int16) - b).max()`。
+
+**浮点提醒**：算出来的“0”常是 `-1.86e-09` 这类灰尘，判零写 `abs(x) < 1e-6`，永远别写 `== 0`。
+
+---
+
+## 六、色彩在 OpenCV 里的速查
 
 ### BGR 里各颜色的值
 
@@ -474,7 +554,7 @@ H_opencv = 角度 / 2
 
 ---
 
-## 六、返回值形状速查（最容易混）
+## 七、返回值形状速查（最容易混）
 
 | 函数 | 输入 shape | 输出 shape |
 |---|---|---|
@@ -490,6 +570,8 @@ H_opencv = 角度 / 2
 | `resize(img, (w2,h2))` | `(H,W,3)` | `(h2, w2, 3)` —— **dsize 是(宽,高)，shape 是(高,宽)** |
 | `copyMakeBorder(t,b,l,r)` | `(H,W,3)` | `(H+t+b, W+l+r, 3)` |
 | `letterbox(img, 640)` | 任意 | **`(640, 640, 3)` 恒定** |
+| `normalize(..., 0, 1)` | `(H,W,3)` uint8 | `(H,W,3)` **uint8（坑）** / 带 `dtype=CV_32F` 则 float32 |
+| `img / 255` | `(H,W,3)` uint8 | `(H,W,3)` **float64**；`img.astype(np.float32)/255` 才得 float32 |
 | `imdecode` | `(N,)` | `(H,W,3)` |
 | `np.fromfile` | — | `(N,)` |
 | 切片 `img[0]` | `(H,W,3)` | **`(W, 3)` 少了第一维** |
