@@ -530,7 +530,120 @@ def stretch(img):
 
 ---
 
-## 六、色彩在 OpenCV 里的速查
+## 六、几何变换（3.6）
+
+### 先分清两个家族（本节最大的坑）
+
+| 家族 | 函数 | 返回什么 | 动图吗 |
+|---|---|---|---|
+| **出图纸** | `getRotationMatrix2D(center, angle, scale)` | `(2, 3)` float64 | ❌ 一个像素都不动 |
+| | `getAffineTransform(src3, dst3)` | `(2, 3)` float64 | ❌ |
+| | `getPerspectiveTransform(src4, dst4)` | `(3, 3)` float64 | ❌ |
+| **施工** | `warpAffine(img, M, dsize)` | 图像 `(h, w, 3)` | ✅ |
+| | `warpPerspective(img, M, dsize)` | 图像 `(h, w, 3)` | ✅ |
+
+> 矩阵里装的是 `cosθ`、`sinθ` 这类小数 → **dtype 固定 float64**，shape 是 `(2,3)` 或 `(3,3)`，**没有第三维，根本不是图**。
+> 口诀：`get` 开头 = 出图纸；`warp` 开头 = 按图纸施工。
+
+### 三条铁律
+
+```
+1. dsize 一律 (宽, 高)   —— 只有 shape 是 (高, 宽)
+2. center 是 (x, y)      —— 即 (列, 行)，跟 shape 反
+3. 透视图点顺序 左上 → 右上 → 右下 → 左下（顺时针，两边必须一致）
+```
+
+### `cv2.flip`
+
+```python
+cv2.flip(src, flipCode) -> ndarray
+```
+
+| 参数 | 含义 |
+|---|---|
+| `flipCode` | `1` 左右翻（水平）　`0` 上下翻（垂直）　`-1` 两者都翻 |
+
+**返回**：图，**shape 不变**，拷贝。**坑**：`1` 是左右、`0` 是上下，最易记反。
+
+### `cv2.getRotationMatrix2D`
+
+```python
+cv2.getRotationMatrix2D(center, angle, scale) -> ndarray(2×3, float64)
+```
+
+| 参数 | 含义 |
+|---|---|
+| `center` | 绕哪个点转，**`(x, y)`** = `(列, 行)` |
+| `angle` | 角度（度），**逆时针为正**，顺时针写负数 |
+| `scale` | 缩放倍数，`1.0` = 不缩放 |
+
+**返回**：`[[cos, sin, tx], [-sin, cos, ty]]`，float64。**第三列是绕中心转自带的平移补偿**（不补的话图会甩出画面）。
+
+### `cv2.warpAffine`
+
+```python
+cv2.warpAffine(src, M, dsize, flags=INTER_LINEAR, borderMode=BORDER_CONSTANT, borderValue=0) -> ndarray
+```
+
+| 参数 | 含义 |
+|---|---|
+| `src` | 原图 |
+| `M` | 2×3 矩阵，**dtype 必须 float32 / float64**，不能用 uint8 |
+| `dsize` | 输出 **`(宽, 高)`** |
+| `flags` | 插值方式，同 resize 那一套 |
+| `borderValue` | 变换后空出来的角落填什么，默认 `0`（黑） |
+
+**平移矩阵**：`np.float32([[1, 0, dx], [0, 1, dy]])` —— 第一列管 x、第二列管 y、第三列是平移量。
+
+**坑**：`dsize` 沿用原尺寸，旋转后四角必然被裁。
+
+### 透视：`getPerspectiveTransform` + `warpPerspective`
+
+```python
+cv2.getPerspectiveTransform(src, dst) -> ndarray(3×3, float64)
+cv2.warpPerspective(src, M, dsize)    -> ndarray
+```
+
+| 参数 | 含义 |
+|---|---|
+| `src` | 原图里 4 个点，`shape (4,2)`，**每行 `(x, y)`**，**dtype 必须 float32** |
+| `dst` | 希望映射到的 4 个点，同样 `(4,2)` float32 |
+| 顺序 | 左上 → 右上 → 右下 → 左下 |
+
+**怎么判断校正成功了**：结果矩形内几乎全是目标内容（实验值 59750/60000 白）。
+**顺序搞错的标志**：只剩几十个白像素，图被拧成麻花。
+
+### 旋转不裁边：`rotate_keep` 模板
+
+```python
+def rotate_keep(img, angle):
+    h, w = img.shape[:2]
+    cx, cy = w / 2, h / 2
+    M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+
+    cos, sin = abs(M[0, 0]), abs(M[0, 1])          # 直接向矩阵要，不用自己算
+    nw, nh = int(w*cos + h*sin), int(h*cos + w*sin)  # 旋转后包围盒
+
+    M[0, 2] += nw / 2 - cx                          # 中心挪回新画布正中
+    M[1, 2] += nh / 2 - cy
+
+    return cv2.warpAffine(img, M, (nw, nh))
+```
+
+**包围盒公式怎么来的**：矩形转过 θ，它的两条边各留下"影子"，外接框的宽 = 两条边的水平影子之和：
+`nw = w·cos + h·sin`、`nh = h·cos + w·sin`。
+
+| 角度 | nw | nh | 含义 |
+|---|---|---|---|
+| 0° | w | h | 退化成原尺寸（自检点） |
+| 90° | h | w | **长宽互换**（探针） |
+| 45° | 200×0.707+100×0.707 = 212 | 同左 | 两方向一样大 |
+
+**自检法**：`rotate_keep(img, 90)` 的长宽必须互换。三行输出全一样，就说明 `dsize` 没吃进 `nw/nh`。
+
+---
+
+## 七、色彩在 OpenCV 里的速查
 
 ### BGR 里各颜色的值
 
@@ -554,7 +667,7 @@ H_opencv = 角度 / 2
 
 ---
 
-## 七、返回值形状速查（最容易混）
+## 八、返回值形状速查（最容易混）
 
 | 函数 | 输入 shape | 输出 shape |
 |---|---|---|
@@ -570,6 +683,12 @@ H_opencv = 角度 / 2
 | `resize(img, (w2,h2))` | `(H,W,3)` | `(h2, w2, 3)` —— **dsize 是(宽,高)，shape 是(高,宽)** |
 | `copyMakeBorder(t,b,l,r)` | `(H,W,3)` | `(H+t+b, W+l+r, 3)` |
 | `letterbox(img, 640)` | 任意 | **`(640, 640, 3)` 恒定** |
+| `flip` | `(H,W,3)` | `(H,W,3)` **shape 不变** |
+| `getRotationMatrix2D` | — | **`(2,3)` float64 矩阵，不是图** |
+| `getPerspectiveTransform` | — | **`(3,3)` float64 矩阵，不是图** |
+| `warpAffine(img, M, (w2,h2))` | `(H,W,3)` | `(h2, w2, 3)` |
+| `warpPerspective(img, M, (w2,h2))` | `(H,W,3)` | `(h2, w2, 3)` |
+| `rotate_keep(img, 90)` | `(H,W,3)` | **`(W,H,3)` 长宽互换** |
 | `normalize(..., 0, 1)` | `(H,W,3)` uint8 | `(H,W,3)` **uint8（坑）** / 带 `dtype=CV_32F` 则 float32 |
 | `img / 255` | `(H,W,3)` uint8 | `(H,W,3)` **float64**；`img.astype(np.float32)/255` 才得 float32 |
 | `imdecode` | `(N,)` | `(H,W,3)` |
