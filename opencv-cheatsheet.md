@@ -643,7 +643,182 @@ def rotate_keep(img, angle):
 
 ---
 
-## 七、色彩在 OpenCV 里的速查
+## 七、阈值、直方图与对比度增强（3.7）
+
+### 先记一条铁律：这一族只吃单通道灰度图
+
+`threshold` / `adaptiveThreshold` / `equalizeHist` / `clahe.apply` **全部只收 `(H, W)` 的 uint8 灰度图**。喂三通道彩色图不报"色彩乱"，而是直接 `Assertion failed`（`histogram.cpp` / `thresh.cpp`）。
+
+彩色图要做均衡，标准三步（Part 5 的手感）：
+
+```python
+hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)      # ① 转 HSV
+hsv[:, :, 2] = clahe.apply(hsv[:, :, 2])        # ② 只均衡 V（第 2 号维度）
+out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)      # ③ 转回 BGR
+```
+
+> **为什么只动 V**：H 管色相、S 管饱和度。动了 H 颜色就串了，动了 S 就发灰发艳。只有 V（亮度）可以拉。
+
+### `cv2.threshold`
+
+```python
+retval, dst = cv2.threshold(src, thresh, maxval, type)
+```
+
+| 参数 | 含义 |
+|---|---|
+| `src` | **单通道 uint8 灰度图** |
+| `thresh` | 阈值；用 Otsu 时**随便填**（被忽略） |
+| `maxval` | 判为"达标"时赋的值，通常 255 |
+| `type` | 见下表 |
+
+| type | 规则 |
+|---|---|
+| `THRESH_BINARY` | `x > thresh → maxval`，否则 0 |
+| `THRESH_BINARY_INV` | 反过来 |
+| `THRESH_TRUNC` | `x > thresh → thresh`，否则原值 |
+| `THRESH_TOZERO` | `x > thresh` 保留，否则 0 |
+| `THRESH_OTSU` | **与上面任一按位或**：`THRESH_BINARY \| THRESH_OTSU`，自己算阈值 |
+
+**返回**：**元组 `(retval, dst)`** —— 必须写 `ret, th = cv2.threshold(...)`，只接一个的话拿到的是元组，`.shape` 会报 `AttributeError`。
+
+- **`retval` 是 `float`**（`127.0` 不是 `127`），别以为它是 int
+- 没用 Otsu：`retval` = 你传进去的 `thresh`
+- 用了 Otsu：`retval` = 它算出来的阈值（实测低对比度图 100~140 三档时算出 `122.0`）
+
+**Otsu 在干嘛**：把直方图分成两堆，找一个让"堆内差异最小、堆间差异最大"的阈值。图里的灰度分成几档差别明显时，它一次就找准，不用你手调。
+
+### `cv2.adaptiveThreshold`
+
+```python
+dst = cv2.adaptiveThreshold(src, maxValue, adaptiveMethod, thresholdType, blockSize, C)
+```
+
+| 参数 | 含义 |
+|---|---|
+| `src` | **单通道 uint8** |
+| `maxValue` | 达标赋的值 |
+| `adaptiveMethod` | `ADAPTIVE_THRESH_MEAN_C`（邻域均值）/ `ADAPTIVE_THRESH_GAUSSIAN_C`（高斯加权） |
+| `thresholdType` | **只能 `THRESH_BINARY` / `THRESH_BINARY_INV`**（不能带 Otsu） |
+| `blockSize` | 邻域边长，**必须是奇数且 > 1**，否则 `Assertion failed: blockSize % 2 == 1 && blockSize > 1` |
+| `C` | 从邻域均值里**减掉**的常数 |
+
+**返回**：**只有一个 `dst`**（不像 `threshold` 返回元组）—— 这俩最容易混。
+
+**C 的方向（易写反，实测确认）**：
+
+```
+有效阈值 = 邻域均值 − C
+C 大 → 阈值低 → 宽松 → 白像素多
+C 小 → 阈值高 → 严格 → 白像素少
+```
+
+实测（同一张图，blockSize=11）：`C=5 → 17999` 白，`C=1 → 11237` 白。
+
+**为什么需要它**：一张纸一半被灯照亮一半在阴影里，全局切一刀，亮的全白、暗的全黑。自适应是**每个像素问自己周围的邻居**"这块平均多亮"，各自定标准。
+
+### `cv2.calcHist` —— 直方图（⚠️ 5.0 返回一维）
+
+```python
+hist = cv2.calcHist(images, channels, mask, histSize, ranges)
+```
+
+| 参数 | 写法（**五个参数全是列表**） |
+|---|---|
+| `images` | `[gray]` |
+| `channels` | 灰度 `[0]`；BGR 分别 `[0]`/`[1]`/`[2]` |
+| `mask` | `None` = 全图；给掩码则只统计掩码内 |
+| `histSize` | `[256]` = 分 256 格 |
+| `ranges` | `[0, 256]`（**是 256 不是 255**，开区间上界） |
+
+**返回（重要）**：
+
+| 版本 | shape | 取"灰度 120 的像素数" |
+|---|---|---|
+| OpenCV 4.x（教材写法） | `(256, 1)` | `hist[120]` → 1 元素数组 |
+| **OpenCV 5.0.0（本机）** | **`(256,)`** | `hist[120]` → **标量** |
+
+dtype **永远是 `float32`**（不是 float64、不是 uint8）。
+兼容两版的写法：`cv2.calcHist(...).flatten()`。
+
+**怎么理解这个数组**：一条 256 格的表，**每格装"这个灰度有多少像素"**：
+
+```python
+h[0]        # 灰度 0 的像素个数
+h[120]      # 灰度 120 的像素个数
+h.sum()     # 所有格子加起来 = 图像总像素数 H×W   ← 免费自检！
+h.argmax()  # 像素最多的灰度值（图里占比最大的那一档）
+```
+
+> **不是 `(256,256)` 方阵** —— 那是把"灰度 × 灰度"的二维直方图搞混了（3.8 的 2D 直方图才有多维）。
+> **`h.sum() == H×W` 不对 → 检查 mask / ranges / histSize**。
+
+### `cv2.equalizeHist` —— 全局均衡
+
+```python
+dst = cv2.equalizeHist(src) -> ndarray
+```
+
+| 参数 | 含义 |
+|---|---|
+| `src` | **单通道 uint8 灰度图**（彩色报错） |
+
+**返回**：同 shape 灰度图，**尺寸不变，只改灰度分布**。
+
+**干的事**：把直方图摊平 —— 出现多的灰度区间被拉开、出现少的被压缩。
+
+**两个毛病**：
+1. **全局一刀切**：一半亮一半暗时，均衡后亮的更亮暗的更暗，局部对比度反而变差
+2. **噪声被放大**：5 个点的噪声被拉开到 50 个灰度级，肉眼可见
+
+### `cv2.createCLAHE` —— 分块 + 限高（毕设主角）
+
+```python
+clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+dst = clahe.apply(src)
+```
+
+| 参数 | 含义 |
+|---|---|
+| `clipLimit` | 对比度上限，2.0~4.0 常用 |
+| `tileGridSize` | 切成几×几块，`(8,8)` = 64 块，每块**自己算自己的直方图** |
+
+**返回**：⚠️ **返回的不是图像，是一个 CLAHE 处理器对象**（`cv2.CLAHE`），必须 `.apply(图)`。
+
+```python
+cv2.createCLAHE(2.0, (8,8))(gray)   # ❌ TypeError: 'cv2.CLAHE' object is not callable
+clahe = cv2.createCLAHE(2.0, (8,8)) # ✅ 造处理器
+cl = clahe.apply(gray)              # ✅ 处理器吃图
+cl2 = clahe.apply(other)            # ✅ 一个处理器可以反复用
+```
+
+**两个关键词**：
+- **分块（tile）**：亮区暗区各拉各的，互不干扰 → 解决 equalizeHist 一刀切
+- **限高（clip）**：直方图柱子太高被削平，削下来的像素平摊给所有格子 → 噪声不放大
+
+**`clipLimit` 调大 → 两个方向同时变**：
+
+| clipLimit | 对比度 | 噪声 |
+|---|---|---|
+| 2.0（限得紧） | 温和 | 少 |
+| 10.0（限得松） | 强 | **明显放大** |
+
+实测 std（对比度量化指标）：`equalizeHist 74.5 > CLAHE(clip=10) 16.0 > CLAHE(clip=2) 10.8`。
+> `eq` 的 std 特别大不是"更好"，是因为它把整张图硬拉到 0~255 全range，局部反而失真。
+
+**为什么毕设用它**：医学图像病灶灰度变化细微、又常带噪声。全局均衡把噪声放大到看不清，CLAHE 分块提局部对比度 + 限高压噪声，两个问题一起解决。`clipLimit` 和 `tileGridSize` 就是你要搜的两个超参。
+
+### 选型一张表
+
+| 场景 | 用什么 |
+|---|---|
+| 光照均匀、目标和背景灰度差明显 | `threshold` + Otsu |
+| 光照不均（半边暗、拍照有阴影） | `adaptiveThreshold` |
+| 想知道图亮不亮、暗不暗、平不平 | `calcHist`（画出来看） |
+| 整张图偏灰、想快速提对比度 | `equalizeHist` |
+| 局部细节要提、又不能放大噪声 | `createCLAHE` ← 毕设 |
+
+## 八、色彩在 OpenCV 里的速查
 
 ### BGR 里各颜色的值
 
@@ -667,7 +842,7 @@ H_opencv = 角度 / 2
 
 ---
 
-## 八、返回值形状速查（最容易混）
+## 九、返回值形状速查（最容易混）
 
 | 函数 | 输入 shape | 输出 shape |
 |---|---|---|
@@ -692,6 +867,12 @@ H_opencv = 角度 / 2
 | `normalize(..., 0, 1)` | `(H,W,3)` uint8 | `(H,W,3)` **uint8（坑）** / 带 `dtype=CV_32F` 则 float32 |
 | `img / 255` | `(H,W,3)` uint8 | `(H,W,3)` **float64**；`img.astype(np.float32)/255` 才得 float32 |
 | `imdecode` | `(N,)` | `(H,W,3)` |
+| `threshold` | `(H,W)` 灰度 | **元组 `(retval, dst)`**：retval 是 **float**，dst 是 `(H,W)`，值只有 0/maxval |
+| `adaptiveThreshold` | `(H,W)` 灰度 | **只有 `(H,W)`**（不是元组！） |
+| `calcHist` | `(H,W)` 灰度 | **5.0.0：`(256,)` float32** / 4.x：`(256,1)`；`h.sum() == H×W` |
+| `equalizeHist` | `(H,W)` 灰度 | `(H,W)` **shape 不变** |
+| `createCLAHE` | — | **CLAHE 对象，不是图**（要 `.apply()`，且对象不能直接调用） |
+| `clahe.apply` | `(H,W)` 灰度 | `(H,W)` |
 | `np.fromfile` | — | `(N,)` |
 | 切片 `img[0]` | `(H,W,3)` | **`(W, 3)` 少了第一维** |
 | 切片 `img[0:1]` | `(H,W,3)` | `(1, W, 3)` 保留维 |
